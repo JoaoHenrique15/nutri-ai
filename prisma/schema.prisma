@@ -42,15 +42,18 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  
+  role          String    @default("USER") // <--- ADICIONE ESTA LINHA (Pode ser 'USER' ou 'ADMIN')
+
   accounts      Account[]
   sessions      Session[]
 
-  // --- SEUS DADOS PERSONALIZADOS (NUTRIÇÃO) ---
-  height       Float? // Altura em cm
-  weight       Float? // Peso em kg
+  // ... (o resto dos seus campos continua igual)
+  height       Float? 
+  weight       Float? 
   age          Int?
-  goal         String? // Meta
-  restrictions String? // Restrições
+  goal         String? 
+  restrictions String? 
 
   dietPlans DietPlan[]
 }

@@ -1,24 +1,27 @@
 import { auth } from "@/lib/auth";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma"; // <--- Importando a conexão correta
 import { redirect } from "next/navigation";
 import Link from "next/link";
-
-const prisma = new PrismaClient();
 
 export default async function Dashboard() {
   const session = await auth();
   if (!session?.user?.id) redirect("/");
 
-  // Busca a última dieta gerada
+  // 1. Busca a dieta
   const dietPlan = await prisma.dietPlan.findFirst({
     where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
   });
 
-  // Se não tiver dieta, volta pra home
+  // 2. Verifica se é Admin (para mostrar o botão)
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true }
+  });
+  const isAdmin = user?.role === "ADMIN";
+
   if (!dietPlan) redirect("/");
 
-  // Faz o parse do JSON (transforma texto em objeto)
   let dietData;
   try {
     dietData = JSON.parse(dietPlan.content);
@@ -29,13 +32,23 @@ export default async function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       
-      {/* HEADER SIMPLES */}
+      {/* HEADER DO DASHBOARD */}
       <header className="bg-white border-b border-slate-200 p-4 mb-8">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
             <h1 className="text-xl font-bold text-slate-800">🥗 Seu Plano NutriAI</h1>
-            <Link href="/" className="text-sm text-green-600 font-medium hover:underline">
-               ← Gerar Nova
-            </Link>
+            
+            <div className="flex gap-4 items-center">
+               {/* BOTÃO ADMIN AQUI TAMBÉM */}
+               {isAdmin && (
+                  <Link href="/admin" className="text-sm font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100 hover:bg-purple-100">
+                    Admin 🛡️
+                  </Link>
+               )}
+
+               <Link href="/" className="text-sm text-green-600 font-medium hover:underline">
+                  ← Gerar Nova
+               </Link>
+            </div>
         </div>
       </header>
 

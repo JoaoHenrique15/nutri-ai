@@ -1,10 +1,22 @@
 import { auth, signIn, signOut } from "@/lib/auth";
 import { createDietAction } from "./actions";
-import { FaRobot, FaLeaf, FaUserMd, FaGoogle } from "react-icons/fa"; // Vamos usar ícones padrão do react-icons se tiver, ou emojis se não tiver.
-// Nota: Para simplificar e não causar erros de ícones, vou usar Emojis estilizados no código abaixo.
+import { prisma } from "@/lib/prisma"; // Importando nosso gerenciador de banco
+import Link from "next/link"; // Importando Link para navegação
 
 export default async function Home() {
   const session = await auth();
+  
+  // Variável para saber se é admin
+  let isAdmin = false;
+
+  // Se tiver usuário logado, verifica no banco se é ADMIN
+  if (session?.user?.id) {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true } // Só precisamos ler o cargo
+    });
+    if (user?.role === "ADMIN") isAdmin = true;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-green-100">
@@ -12,18 +24,37 @@ export default async function Home() {
       {/* NAVBAR */}
       <nav className="w-full bg-white/80 backdrop-blur-md border-b border-slate-200 fixed top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition">
             <span className="text-3xl">🥗</span>
             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-600 to-emerald-600">
               NutriAI
             </span>
-          </div>
+          </Link>
+
           {session && (
             <div className="flex items-center gap-4">
-              <span className="hidden sm:block text-sm text-slate-600">Olá, {session.user?.name?.split(" ")[0]}</span>
+              
+              {/* --- BOTÃO SECRETO DE ADMIN --- */}
+              {isAdmin && (
+                <Link 
+                  href="/admin"
+                  className="hidden md:flex items-center gap-2 bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full text-sm font-bold border border-purple-200 hover:bg-purple-200 transition"
+                >
+                  🛡️ Painel Admin
+                </Link>
+              )}
+              {/* ----------------------------- */}
+
+              <span className="hidden sm:block text-sm text-slate-600">
+                Olá, {session.user?.name?.split(" ")[0]}
+              </span>
+              
                <form action={async () => { "use server"; await signOut(); }}>
                   <button className="text-sm font-medium text-red-500 hover:text-red-700 transition">Sair</button>
                </form>
+               
                {session.user?.image && (
                  <img src={session.user.image} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200" />
                )}
