@@ -1,22 +1,23 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-
-// Configura a ferramenta de busca
-const searchTool = new TavilySearchResults({
-  maxResults: 3,
-  apiKey: process.env.TAVILY_API_KEY,
-});
-
-// Configura o Google Gemini
-const chatModel = new ChatGoogleGenerativeAI({
-  modelName: "gemini-pro", // Versão gratuita e eficiente
-  maxOutputTokens: 2048,
-  apiKey: process.env.GOOGLE_API_KEY,
-});
 
 export async function generateNutritionPlan(userData: any) {
   console.log("🛠️ Iniciando consultoria com Gemini para:", userData.goal);
+
+  // VERIFICAÇÃO DE SEGURANÇA
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    console.error("❌ ERRO CRÍTICO: A chave GOOGLE_API_KEY não foi encontrada no arquivo .env");
+    throw new Error("Chave de API do Google não configurada.");
+  }
+
+  // Configura a IA apenas quando a função é chamada (evita travar o site na inicialização)
+  const chatModel = new ChatGoogleGenerativeAI({
+    modelName: "gemini-pro",
+    maxOutputTokens: 2048,
+    apiKey: apiKey,
+    temperature: 0.7,
+  });
 
   try {
     const systemPrompt = `
@@ -29,20 +30,17 @@ export async function generateNutritionPlan(userData: any) {
       - Restrições: ${userData.restrictions}
 
       INSTRUÇÕES:
-      1. Calcule IMC e TMB.
-      2. Crie cardápio (Café, Almoço, Lanche, Jantar).
-      3. IMPORTANTE: Retorne APENAS um JSON válido. Não coloque crases, não coloque a palavra 'json' no início. Apenas abra chaves '{' e feche chaves '}'.
-      
+      Crie um cardápio de 1 dia (Café, Almoço, Lanche, Jantar) e retorne APENAS um JSON válido.
       Formato JSON obrigatório:
       {
-        "summary": "Resumo da estratégia",
-        "calories": "X kcal",
+        "summary": "Resumo...",
+        "calories": "Total calórico",
         "meals": [
-          { "name": "Café da Manhã", "items": ["Item A", "Item B"], "macros": "Prot: Xg..." },
-          { "name": "Almoço", "items": ["Item A", "Item B"], "macros": "Prot: Xg..." },
-          { "name": "Jantar", "items": ["Item A", "Item B"], "macros": "Prot: Xg..." }
+          { "name": "Café", "items": ["Item 1"], "macros": "Xg Prot" },
+          { "name": "Almoço", "items": ["Item 1"], "macros": "Xg Prot" },
+          { "name": "Jantar", "items": ["Item 1"], "macros": "Xg Prot" }
         ],
-        "tips": ["Dica 1", "Dica 2"]
+        "tips": ["Dica 1"]
       }
     `;
 
@@ -51,11 +49,9 @@ export async function generateNutritionPlan(userData: any) {
       new HumanMessage("Gere o plano agora.")
     ]);
 
-    // Limpeza extra para garantir que o Gemini não mande markdown
     let cleanText = response.content.toString();
     cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
     
-    // Encontra onde começa e termina o JSON (caso ele fale algo antes)
     const firstBracket = cleanText.indexOf("{");
     const lastBracket = cleanText.lastIndexOf("}");
     if (firstBracket !== -1 && lastBracket !== -1) {
@@ -66,6 +62,11 @@ export async function generateNutritionPlan(userData: any) {
 
   } catch (error) {
     console.error("Erro na IA:", error);
-    throw new Error("Falha ao gerar dieta. Tente novamente.");
+    return {
+       summary: "Erro ao gerar dieta. Verifique a chave de API.",
+       calories: "0",
+       meals: [],
+       tips: ["Erro técnico"]
+    };
   }
 }
