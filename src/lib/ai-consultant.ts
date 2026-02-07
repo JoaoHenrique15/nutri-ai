@@ -1,72 +1,58 @@
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export async function generateNutritionPlan(userData: any) {
-  console.log("🛠️ Iniciando consultoria com Gemini para:", userData.goal);
-
-  // VERIFICAÇÃO DE SEGURANÇA
+export async function generateNutritionPlan(data: any) {
   const apiKey = process.env.GOOGLE_API_KEY;
+  
   if (!apiKey) {
-    console.error("❌ ERRO CRÍTICO: A chave GOOGLE_API_KEY não foi encontrada no arquivo .env");
-    throw new Error("Chave de API do Google não configurada.");
+    throw new Error("Chave de API não configurada no .env");
   }
 
-  // Configura a IA apenas quando a função é chamada (evita travar o site na inicialização)
-  const chatModel = new ChatGoogleGenerativeAI({
-    modelName: "gemini-pro",
-    maxOutputTokens: 2048,
-    apiKey: apiKey,
-    temperature: 0.7,
-  });
-
   try {
-    const systemPrompt = `
-      Você é um nutricionista especialista chamado NutriAI.
-      DADOS DO CLIENTE:
-      - Altura: ${userData.height} cm
-      - Peso: ${userData.weight} kg
-      - Idade: ${userData.age} anos
-      - Meta: ${userData.goal}
-      - Restrições: ${userData.restrictions}
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Usamos o modelo Flash 1.5 que é RÁPIDO e aceita a chave gratuita
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      generationConfig: {
+        // Essa linha OBRIGA a IA a devolver apenas JSON (sem texto extra)
+        responseMimeType: "application/json" 
+      }
+    });
 
-      INSTRUÇÕES:
-      Crie um cardápio de 1 dia (Café, Almoço, Lanche, Jantar) e retorne APENAS um JSON válido.
-      Formato JSON obrigatório:
+    const prompt = `
+      Crie uma dieta para:
+      Peso: ${data.weight}kg, Altura: ${data.height}cm, Objetivo: ${data.goal}.
+      
+      Responda EXATAMENTE neste esquema JSON:
       {
-        "summary": "Resumo...",
-        "calories": "Total calórico",
+        "calories": "ex: 2000 kcal",
+        "summary": "Resumo motivacional curto.",
         "meals": [
-          { "name": "Café", "items": ["Item 1"], "macros": "Xg Prot" },
-          { "name": "Almoço", "items": ["Item 1"], "macros": "Xg Prot" },
-          { "name": "Jantar", "items": ["Item 1"], "macros": "Xg Prot" }
-        ],
-        "tips": ["Dica 1"]
+          { "name": "Café da Manhã", "time": "08:00", "foods": ["2 Ovos", "Café"] },
+          { "name": "Almoço", "time": "12:00", "foods": ["Frango", "Arroz"] },
+          { "name": "Jantar", "time": "20:00", "foods": ["Salada", "Peixe"] }
+        ]
       }
     `;
 
-    const response = await chatModel.invoke([
-      new SystemMessage(systemPrompt),
-      new HumanMessage("Gere o plano agora.")
-    ]);
+    console.log("🤖 Consultando IA (Modelo Flash)...");
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
 
-    let cleanText = response.content.toString();
-    cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
+    console.log("✅ Resposta recebida!");
+    return JSON.parse(text);
+
+  } catch (error: any) {
+    console.error("❌ ERRO REAL:", error);
     
-    const firstBracket = cleanText.indexOf("{");
-    const lastBracket = cleanText.lastIndexOf("}");
-    if (firstBracket !== -1 && lastBracket !== -1) {
-        cleanText = cleanText.substring(firstBracket, lastBracket + 1);
-    }
-
-    return JSON.parse(cleanText);
-
-  } catch (error) {
-    console.error("Erro na IA:", error);
+    // Se der erro, retornamos um plano padrão para o site NÃO QUEBRAR
     return {
-       summary: "Erro ao gerar dieta. Verifique a chave de API.",
-       calories: "0",
-       meals: [],
-       tips: ["Erro técnico"]
+      calories: "Cálculo Indisponível",
+      summary: "O Google Gemini está instável agora. Tente novamente em 1 minuto.",
+      meals: [
+        { name: "Aviso", time: "--:--", foods: ["Tente gerar novamente"] }
+      ]
     };
   }
 }

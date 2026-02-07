@@ -1,186 +1,172 @@
 import { auth, signIn, signOut } from "@/lib/auth";
 import { createDietAction } from "./actions";
-import { prisma } from "@/lib/prisma"; // Importando nosso gerenciador de banco
-import Link from "next/link"; // Importando Link para navegação
+import { prisma } from "@/lib/prisma";
+
+// Função segura para buscar dados sem quebrar o site
+async function getUserDiet(userId: string) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { diets: { orderBy: { createdAt: 'desc' }, take: 1 } }
+    });
+    
+    if (!user?.diets?.[0]) return null;
+    
+    const content = user.diets[0].content;
+    return typeof content === 'string' ? JSON.parse(content) : content;
+  } catch (e) {
+    console.log("Banco de dados indisponível (Modo Leitura Offline)");
+    return null;
+  }
+}
 
 export default async function Home() {
   const session = await auth();
-  
-  // Variável para saber se é admin
-  let isAdmin = false;
+  const currentDiet = session?.user?.id ? await getUserDiet(session.user.id) : null;
 
-  // Se tiver usuário logado, verifica no banco se é ADMIN
-  if (session?.user?.id) {
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true } // Só precisamos ler o cargo
-    });
-    if (user?.role === "ADMIN") isAdmin = true;
+  // --- TELA DA DIETA GERADA ---
+  if (currentDiet && currentDiet.meals.length > 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+          <div className="flex items-center gap-2 text-xl font-bold text-green-700">
+            <span>🥗</span> NutriAI
+          </div>
+          <div className="flex gap-4 items-center">
+            <form action={async () => { 
+              "use server"; 
+              if (session?.user?.id) {
+                // Tenta deletar, mas não quebra se falhar
+                try { await prisma.dietPlan.deleteMany({ where: { userId: session.user.id }}); } catch(e){}
+              }
+            }}>
+              <button className="text-sm font-semibold text-green-700 bg-green-50 px-4 py-2 rounded-full hover:bg-green-100 transition">
+                Gerar Nova
+              </button>
+            </form>
+            <form action={async () => { "use server"; await signOut(); }}>
+              <button className="text-sm text-red-500 hover:text-red-700 font-medium">Sair</button>
+            </form>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto px-4 mt-8">
+          {/* Card Principal */}
+          <div className="bg-slate-900 text-white rounded-2xl p-8 shadow-xl mb-8 relative overflow-hidden">
+            <div className="relative z-10">
+              <h2 className="text-3xl font-bold mb-3">Seu Plano Alimentar</h2>
+              <p className="text-slate-300 text-lg mb-6 leading-relaxed">{currentDiet.summary}</p>
+              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur px-4 py-2 rounded-lg border border-white/10">
+                <span className="text-yellow-400 font-bold">⚡ Meta Diária:</span>
+                <span className="font-mono text-xl">{currentDiet.calories}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de Refeições */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {currentDiet.meals.map((meal: any, index: number) => (
+              <div key={index} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition">
+                <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                  <h3 className="font-bold text-slate-800 text-lg">{meal.name}</h3>
+                  <span className="text-xs font-bold bg-green-100 text-green-800 px-3 py-1 rounded-full">{meal.time}</span>
+                </div>
+                <ul className="space-y-3">
+                  {meal.foods.map((food: string, i: number) => (
+                    <li key={i} className="flex items-start gap-3 text-slate-600">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2 shrink-0" />
+                      {food}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </main>
+      </div>
+    );
   }
 
+  // --- TELA DE FORMULÁRIO (HOME) ---
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-green-100">
-      
-      {/* NAVBAR */}
-      <nav className="w-full bg-white/80 backdrop-blur-md border-b border-slate-200 fixed top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition">
-            <span className="text-3xl">🥗</span>
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-600 to-emerald-600">
-              NutriAI
-            </span>
-          </Link>
-
-          {session && (
-            <div className="flex items-center gap-4">
-              
-              {/* --- BOTÃO SECRETO DE ADMIN --- */}
-              {isAdmin && (
-                <Link 
-                  href="/admin"
-                  className="hidden md:flex items-center gap-2 bg-purple-100 text-purple-700 px-3 py-1.5 rounded-full text-sm font-bold border border-purple-200 hover:bg-purple-200 transition"
-                >
-                  🛡️ Painel Admin
-                </Link>
-              )}
-              {/* ----------------------------- */}
-
-              <span className="hidden sm:block text-sm text-slate-600">
-                Olá, {session.user?.name?.split(" ")[0]}
-              </span>
-              
-               <form action={async () => { "use server"; await signOut(); }}>
-                  <button className="text-sm font-medium text-red-500 hover:text-red-700 transition">Sair</button>
-               </form>
-               
-               {session.user?.image && (
-                 <img src={session.user.image} alt="Avatar" className="w-9 h-9 rounded-full border border-slate-200" />
-               )}
-            </div>
-          )}
-        </div>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      <nav className="w-full bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 shadow-sm">
+        <div className="font-bold text-xl text-green-600 flex items-center gap-2"><span>🥗</span> NutriAI</div>
+        {session && (
+          <form action={async () => { "use server"; await signOut(); }}>
+            <button className="text-sm font-medium text-red-500">Sair da conta</button>
+          </form>
+        )}
       </nav>
 
-      {/* HERO SECTION */}
-      <main className="pt-32 pb-20 px-4">
-        <div className="max-w-5xl mx-auto">
-          
-          <div className="text-center mb-16 space-y-4">
-            <span className="inline-block py-1 px-3 rounded-full bg-green-100 text-green-700 text-xs font-bold tracking-wider uppercase mb-2">
-              Inteligência Artificial & Nutrição
-            </span>
-            <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 tracking-tight leading-tight">
-              Sua Dieta Perfeita, <br className="hidden md:block" />
-              <span className="text-green-600">Gerada em Segundos.</span>
-            </h1>
-            <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto">
-              Abandone as dietas genéricas. Nossa IA analisa seu metabolismo e objetivos para criar um plano alimentar único para você.
-            </p>
-          </div>
+      <main className="max-w-2xl mx-auto pt-12 px-4 pb-20">
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Gerador de Dietas Inteligente</h1>
+          <p className="text-lg text-slate-500">Inteligência Artificial criando seu cardápio ideal em segundos.</p>
+        </div>
 
-          <div className="grid md:grid-cols-2 gap-12 items-start">
-            
-            {/* LADO ESQUERDO: Vantagens */}
-            <div className="space-y-8 mt-4">
-              <div className="flex gap-4 p-4 rounded-xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl bg-blue-50 w-12 h-12 flex items-center justify-center rounded-lg">⚡</div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800">Ultra Rápido</h3>
-                  <p className="text-slate-500 text-sm">Receba seu cardápio completo em menos de 30 segundos.</p>
-                </div>
-              </div>
-              <div className="flex gap-4 p-4 rounded-xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl bg-green-50 w-12 h-12 flex items-center justify-center rounded-lg">🧬</div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800">100% Personalizado</h3>
-                  <p className="text-slate-500 text-sm">Consideramos sua idade, altura, peso e restrições alimentares.</p>
-                </div>
-              </div>
-              <div className="flex gap-4 p-4 rounded-xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition">
-                <div className="text-3xl bg-purple-50 w-12 h-12 flex items-center justify-center rounded-lg">🧠</div>
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800">Powered by Gemini</h3>
-                  <p className="text-slate-500 text-sm">Usamos a tecnologia mais avançada do Google para nutrição.</p>
-                </div>
-              </div>
+        <div className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100">
+          {!session ? (
+            <div className="text-center py-10">
+              <div className="mb-6 bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto text-2xl">🔒</div>
+              <h3 className="text-xl font-bold mb-2">Faça login para começar</h3>
+              <p className="text-slate-500 mb-6">Salve seu histórico e acesse de qualquer lugar.</p>
+              <form action={async () => { "use server"; await signIn("google"); }}>
+                <button className="bg-slate-900 text-white px-8 py-3 rounded-xl font-semibold hover:bg-slate-800 transition w-full shadow-lg">
+                  Continuar com Google
+                </button>
+              </form>
             </div>
+          ) : (
+            <form action={createDietAction} className="space-y-5">
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Altura (cm)</label>
+                  <input name="height" type="number" placeholder="175" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Peso (kg)</label>
+                  <input name="weight" type="number" placeholder="80" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition" />
+                </div>
+              </div>
 
-            {/* LADO DIREITO: O Formulário Poderoso */}
-            <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-500 to-emerald-500"></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Idade</label>
+                <input name="age" type="number" placeholder="25" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Objetivo</label>
+                <select name="goal" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition cursor-pointer">
+                  <option value="Emagrecer">Queimar Gordura</option>
+                  <option value="Hipertrofia">Ganhar Massa Muscular</option>
+                  <option value="Saúde">Reeducação Alimentar</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nível de Atividade</label>
+                <select name="activityLevel" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition cursor-pointer">
+                  <option value="Sedentário">Sedentário (Trabalho de escritório)</option>
+                  <option value="Leve">Leve (Exercício 1-2x/semana)</option>
+                  <option value="Moderado">Moderado (Exercício 3-5x/semana)</option>
+                  <option value="Intenso">Intenso (Atleta/Todo dia)</option>
+                </select>
+              </div>
               
-              {!session ? (
-                <div className="text-center py-10">
-                  <h2 className="text-2xl font-bold mb-4">Comece sua Jornada</h2>
-                  <p className="text-slate-500 mb-8">Faça login para salvar seu histórico e gerar sua dieta.</p>
-                  <form
-                    action={async () => {
-                      "use server";
-                      await signIn("google");
-                    }}
-                  >
-                    <button className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 px-6 rounded-xl transition flex items-center justify-center gap-3">
-                       <span>G</span> Entrar com Google
-                    </button>
-                  </form>
-                </div>
-              ) : (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <h2 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2">
-                    <span className="w-2 h-8 bg-green-500 rounded-full"></span>
-                    Configurar Perfil
-                  </h2>
-                  
-                  <form action={createDietAction} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-500 uppercase">Altura (cm)</label>
-                        <input name="height" type="number" placeholder="ex: 175" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none transition" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-500 uppercase">Peso (kg)</label>
-                        <input name="weight" type="number" placeholder="ex: 80" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none transition" />
-                      </div>
-                    </div>
+              <div>
+                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Restrições ou Alergias</label>
+                 <textarea name="restrictions" placeholder="Ex: Sou diabético, não como carne de porco..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition h-24 resize-none"></textarea>
+              </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Idade</label>
-                      <input name="age" type="number" placeholder="ex: 30" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none transition" />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Objetivo Principal</label>
-                      <select name="goal" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none transition">
-                        <option value="Perder gordura">🔥 Queimar gordura</option>
-                        <option value="Ganhar massa muscular">💪 Ganhar massa muscular</option>
-                        <option value="Manter peso e saúde">🥗 Manter peso e saúde</option>
-                        <option value="Reeducação alimentar">🍎 Reeducação alimentar</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-500 uppercase">Restrições / Preferências</label>
-                      <textarea name="restrictions" placeholder="Ex: Sou diabético, não gosto de brócolis, sou vegetariano..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none transition h-24 resize-none"></textarea>
-                    </div>
-                    
-                    <button type="submit" className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 hover:shadow-green-300 transform hover:-translate-y-0.5 transition duration-200 mt-2">
-                      ✨ Gerar Minha Dieta com IA
-                    </button>
-                    <p className="text-center text-xs text-slate-400 mt-2">Isso pode levar alguns segundos.</p>
-                  </form>
-                </div>
-              )}
-            </div>
-          </div>
+              <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition shadow-xl shadow-green-200 active:scale-[0.98]">
+                ✨ Gerar Dieta Personalizada
+              </button>
+            </form>
+          )}
         </div>
       </main>
-
-      {/* FOOTER SIMPLE */}
-      <footer className="py-8 text-center text-slate-400 text-sm">
-        <p>&copy; 2024 NutriAI. Consultoria nutricional via IA.</p>
-      </footer>
     </div>
   );
 }

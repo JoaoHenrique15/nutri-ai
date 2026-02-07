@@ -75,4 +75,5 @@ model DietPlan {
   content   String   @db.Text // JSON da dieta
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isPublic  Boolean  @default(false) //
 }

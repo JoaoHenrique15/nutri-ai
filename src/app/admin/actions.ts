@@ -45,3 +45,15 @@ export async function toggleUserRole(userId: string, currentRole: string) {
   // 4. Atualiza a tela
   revalidatePath("/admin");
 }
+
+export async function toggleDietVisibility(dietId: string, currentStatus: boolean) {
+  await checkAdmin(); // Garante que só você pode fazer isso
+
+  await prisma.dietPlan.update({
+    where: { id: dietId },
+    data: { isPublic: !currentStatus }, // Inverte: se era true vira false, e vice-versa
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/explore"); // Atualiza também a página pública
+}

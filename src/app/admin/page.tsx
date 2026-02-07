@@ -1,14 +1,13 @@
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma"; // <--- MUDOU AQUI (Importe do arquivo que criamos)
+import { prisma } from "@/lib/prisma"; 
 import { redirect } from "next/navigation";
-import { deleteDiet, toggleUserRole } from "./actions";
+import { deleteDiet, toggleUserRole, toggleDietVisibility } from "./actions";
 
 export default async function AdminDashboard() {
   const session = await auth();
   
   if (!session?.user?.id) redirect("/");
 
-  // Verifica se quem está acessando é ADMIN
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
   });
@@ -21,14 +20,11 @@ export default async function AdminDashboard() {
     );
   }
 
-  // BUSCA DADOS DO BANCO
-  // 1. Todas as dietas
   const allDiets = await prisma.dietPlan.findMany({
     orderBy: { createdAt: "desc" },
     include: { user: true },
   });
 
-  // 2. Todos os usuários (para a gestão de equipe)
   const allUsers = await prisma.user.findMany({
     orderBy: { name: "asc" },
   });
@@ -50,7 +46,7 @@ export default async function AdminDashboard() {
           </div>
         </header>
 
-        {/* --- SEÇÃO 1: GERENCIAR USUÁRIOS E PERMISSÕES --- */}
+        {/* SEÇÃO 1: GERENCIAR USUÁRIOS */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
             <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
@@ -75,7 +71,7 @@ export default async function AdminDashboard() {
                 <tr key={user.id} className="hover:bg-slate-50 transition">
                   <td className="p-4 flex items-center gap-3">
                     {user.image ? (
-                      <img src={user.image} className="w-8 h-8 rounded-full" />
+                      <img src={user.image} className="w-8 h-8 rounded-full" alt="" />
                     ) : (
                       <div className="w-8 h-8 bg-slate-200 rounded-full"></div>
                     )}
@@ -94,7 +90,6 @@ export default async function AdminDashboard() {
                     )}
                   </td>
                   <td className="p-4">
-                    {/* Não permite mudar o próprio cargo para não se trancar fora */}
                     {user.id !== currentUser.id && (
                       <form action={toggleUserRole.bind(null, user.id, user.role)}>
                         <button className={`text-xs font-bold px-3 py-2 rounded transition ${
@@ -113,7 +108,7 @@ export default async function AdminDashboard() {
           </table>
         </section>
 
-        {/* --- SEÇÃO 2: GERENCIAR DIETAS (O QUE JÁ TÍNHAMOS) --- */}
+        {/* SEÇÃO 2: GERENCIAR DIETAS */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
            <div className="p-6 border-b border-slate-100 bg-slate-50">
             <h2 className="font-bold text-lg text-slate-800">🥗 Dietas Geradas Recentemente</h2>
@@ -124,6 +119,7 @@ export default async function AdminDashboard() {
                 <th className="p-4">Data</th>
                 <th className="p-4">Cliente</th>
                 <th className="p-4">Plano</th>
+                <th className="p-4">Visibilidade</th>
                 <th className="p-4">Ação</th>
               </tr>
             </thead>
@@ -139,6 +135,19 @@ export default async function AdminDashboard() {
                   <td className="p-4 text-sm text-slate-600">
                     {diet.title}
                   </td>
+                  
+                  <td className="p-4">
+                     <form action={toggleDietVisibility.bind(null, diet.id, diet.isPublic)}>
+                        <button className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border transition ${
+                            diet.isPublic 
+                            ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200" 
+                            : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
+                        }`}>
+                           {diet.isPublic ? "🌎 Pública" : "🔒 Privada"}
+                        </button>
+                     </form>
+                  </td>
+
                   <td className="p-4">
                     <form action={deleteDiet.bind(null, diet.id)}>
                       <button className="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded text-xs font-bold transition">
